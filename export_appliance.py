@@ -60,7 +60,7 @@ def tar_convert(disk, output, excludes, compression_level):
     tar_options_list = ["numericowner:true",
                         "excludes:\"%s\"" % ' '.join(excludes)]
     tar_options = ' '.join(tar_options_list)
-    cmd = which("guestfish") + " --ro -i tar-out -a %s / - %s %s > %s"
+    cmd = which("guestfish") + " --ro -m /dev/sda1:/ tar-out -a %s / - %s %s > %s"
     cmd = cmd % (disk, tar_options, compr, output)
     proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=True)
     proc.communicate()
