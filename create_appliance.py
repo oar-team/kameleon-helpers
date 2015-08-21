@@ -142,12 +142,21 @@ part-set-bootable /dev/sda 1 true
 
 def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
     """Make a disk image from a tar archive or files."""
-    binary = which("virt-make-fs")
-    cmd = [binary, "--partition", "--format=%s" % fmt,
-           "--type=%s" % filesystem, "--", input_, output_filename]
+    logger.info("Creating %s" % output_filename)
+    if output_filename == input_:
+        raise Exception("Please give a different output filename.")
 
-    if size:
-        cmd.insert(2, "--size=%s" % size)
+    binary = which("qemu-img")
+    cmd = [binary, "create", "-f", fmt, output_filename, size]
+    proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=False)
+    proc.communicate()
+    if proc.returncode:
+        raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
+
+    binary = which("virt-make-fs")
+    cmd = [binary, "--partition", "--type=%s" % filesystem, "--",
+           input_, output_filename]
+
     if verbose:
         cmd.insert(1, "--verbose")
 
@@ -167,10 +176,6 @@ def create_appliance(args):
         os.environ['LIBGUESTFS_DEBUG'] = '1'
 
     output_filename = "%s.%s" % (output, args.format)
-    logger.info("Creating %s" % output_filename)
-    if output_filename == input_:
-        logger.info("Please give a different output filename.")
-        return
 
     create_disk(input_,
                 output_filename,
@@ -205,7 +210,7 @@ if __name__ == '__main__':
                         default="ext2")
     parser.add_argument('-s', '--size', action="store", type=str,
                         help='choose the size of the output image',
-                        default="+1G")
+                        default="10G")
     parser.add_argument('-o', '--output', action="store", type=str,
                         help='Output filename (without file extension)',
                         required=True, metavar='filename')
