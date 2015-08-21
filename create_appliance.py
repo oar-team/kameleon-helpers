@@ -9,6 +9,7 @@ import sys
 import subprocess
 import argparse
 import logging
+import math
 
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,18 @@ def which(command):
                 return exe_file
 
     raise ValueError("Command '%s' not found" % command)
+
+
+def size_in_bytes(size):
+    """Convert disk size from some unit to bytes."""
+    size_str = "%s" % size
+    units = ["k", "m", "g", "t", "p", "e", "z", "y"]
+    unit = size_str[-1].lower()
+    if unit in units:
+        p = units.index(unit) + 1
+        return int(math.ceil(math.pow(1024, p) * float(size_str[:-1])))
+    else:
+        return int(size_str)
 
 
 def run_guestfish_script(disk, script, mount=True, piped_output=False):
@@ -140,19 +153,44 @@ part-set-bootable /dev/sda 1 true
     return uuid, vmlinuz, initrd
 
 
-def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
+def create_empty_disk(output_filename, fmt, size):
     """Make a disk image from a tar archive or files."""
     logger.info("Creating %s" % output_filename)
-    if output_filename == input_:
-        raise Exception("Please give a different output filename.")
+    size_bytes = size_in_bytes(size)
+    if fmt in ("vdi", "vmdk", "vhd"):
+        # try:
+        binary = which("VBoxManage")
+        cmd = [binary, "createhd", "--filename", output_filename,
+               "--sizebyte", "%s" % size_bytes, "--format", fmt.upper()]
+        os.remove(output_filename) if os.path.exists(output_filename) else None
+        proc = subprocess.Popen(cmd,
+                                stderr=subprocess.STDOUT,
+                                env=os.environ.copy(),
+                                shell=False)
+        proc.communicate()
+        if proc.returncode:
+            raise subprocess.CalledProcessError(proc.returncode,
+                                                ' '.join(cmd))
+        return
+        # except:
+        #     logger.warning("Cannot found VBoxManage, switch to qemu-img")
 
     binary = which("qemu-img")
-    cmd = [binary, "create", "-f", fmt, output_filename, size]
+    cmd = [binary, "create", "-f", fmt, output_filename, "%s" % size_bytes]
     proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=False)
     proc.communicate()
     if proc.returncode:
         raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
 
+
+def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
+    """Make a disk image from a tar archive or files."""
+    if output_filename == input_:
+        raise Exception("Please give a different output filename.")
+
+    create_empty_disk(output_filename, fmt, size)
+
+    logger.info("Copying data to %s" % output_filename)
     binary = which("virt-make-fs")
     cmd = [binary, "--partition", "--type=%s" % filesystem, "--",
            input_, output_filename]
