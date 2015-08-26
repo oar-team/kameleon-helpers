@@ -9,14 +9,75 @@ import sys
 import subprocess
 import argparse
 import logging
-import math
 import tempfile
 import shutil
+import contextlib
 
 
 logger = logging.getLogger(__name__)
 
-disk_formats = ('qcow', 'qcow2', 'qed', 'vdi', 'raw', 'vmdk')
+
+# Syntax sugar.
+_ver = sys.version_info
+
+#: Python 2.x?
+is_py2 = (_ver[0] == 2)
+
+#: Python 3.x?
+is_py3 = (_ver[0] == 3)
+
+
+# Python 2/3 compat
+if is_py3:
+    builtin_str = str
+    str = str
+    bytes = bytes
+    basestring = (str, bytes)
+
+    def is_bytes(x):
+        """ Return True if `x` is bytes."""
+        return isinstance(x, (bytes, memoryview, bytearray))
+
+else:
+    builtin_str = str
+    bytes = str
+    str = unicode
+
+    def is_bytes(x):
+        """ Return True if `x` is bytes."""
+        return isinstance(x, (buffer, bytearray))
+
+
+def to_unicode(obj, encoding='utf-8'):
+    """Convert ``obj`` to unicode"""
+    # unicode support
+    if isinstance(obj, str):
+        return obj
+
+    # bytes support
+    if is_bytes(obj):
+        if hasattr(obj, 'tobytes'):
+            return str(obj.tobytes(), encoding)
+        return str(obj, encoding)
+
+    # string support
+    if isinstance(obj, basestring):
+        if hasattr(obj, 'decode'):
+            return obj.decode(encoding)
+        else:
+            return str(obj, encoding)
+
+    return str(obj)
+
+
+@contextlib.contextmanager
+def temporary_directory():
+    """Context manager for tempfile.mkdtemp()."""
+    name = tempfile.mkdtemp()
+    try:
+        yield name
+    finally:
+        shutil.rmtree(name)
 
 
 def which(command):
@@ -40,16 +101,20 @@ def which(command):
     raise ValueError("Command '%s' not found" % command)
 
 
-def size_in_bytes(size):
-    """Convert disk size from some unit to bytes."""
-    size_str = "%s" % size
-    units = ["k", "m", "g", "t", "p", "e", "z", "y"]
-    unit = size_str[-1].lower()
-    if unit in units:
-        p = units.index(unit) + 1
-        return int(math.ceil(math.pow(1024, p) * float(size_str[:-1])))
-    else:
-        return int(size_str)
+def file_type(path):
+    """Get file type."""
+    if not op.exists(path):
+        raise Exception("cannot open '%s' (No such file or directory)" % path)
+    cmd = [which("file"), path]
+    proc = subprocess.Popen(cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            env=os.environ.copy(),
+                            shell=False)
+    output, _ = proc.communicate()
+    if proc.returncode:
+        raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
+    return output.split(':')[1].strip()
 
 
 def qemu_convert(disk, output_fmt, output_filename):
@@ -112,12 +177,21 @@ def get_boot_information(disk):
     script_1 = """
 blkid /dev/sda1 | grep ^UUID: | awk '{print $2}'
 ls /boot/ | grep ^vmlinuz | head -n 1
-ls /boot/ | grep ^init | head -n 1"""
+ls /boot/ | grep ^init | grep -v fallback | head -n 1
+ls /boot/ | grep ^init | grep fallback | head -n 1"""
     logger.info(get_boot_information.__doc__)
     output_1 = run_guestfish_script(disk, script_1, piped_output=True)
     try:
-        uuid, vmlinuz, initrd = output_1.strip().split('\n')
-        return uuid, vmlinuz, initrd
+        infos = output_1.strip().split('\n')
+        if len(infos) == 4:
+            uuid, vmlinuz, initrd, initrd_fallback = infos
+            if initrd:
+                return uuid, vmlinuz, initrd
+            else:
+                return uuid, vmlinuz, initrd_fallback
+        else:
+            uuid, vmlinuz, initrd = infos
+            return uuid, vmlinuz, initrd
     except:
         raise Exception("Invalid boot information (missing kernel ?)")
 
@@ -136,7 +210,7 @@ write-append /etc/fstab "UUID=%s\\t/\\t%s\\terrors=remount-ro\\t0\\t1\\n"
 def install_bootloader(disk, mbr, append):
     """Install a bootloader"""
     mbr_path = mbr or find_mbr()
-    mbr_path = op.abspath(mbr_path)
+    mbr_path = op.abspath(to_unicode(mbr_path))
     uuid, vmlinuz, initrd = get_boot_information(disk)
     logger.info("Root partition UUID: %s" % uuid)
     logger.info("Kernel image: /boot/%s" % vmlinuz)
@@ -168,24 +242,51 @@ part-set-bootable /dev/sda 1 true
 
 def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
     """Make a disk image from a tar archive or files."""
-    binary = which("virt-make-fs")
-    cmd = [binary, "--partition", "--size", size, "--type", "%s" % filesystem,
-           "--format", "qcow2", "--", input_, output_filename]
+    input_type = file_type(input_).lower()
 
-    if verbose:
-        cmd.insert(1, "--verbose")
+    if "xz compressed data" in input_type:
+        uncompress_binary = which("xzcat")
+    elif "bzip2 compressed data" in input_type:
+        uncompress_binary = which("bzcat")
+    elif "gzip compressed data" in input_type:
+        uncompress_binary = which("zcat")
+    else:
+        uncompress_binary = ""
 
-    proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=False)
+    # create a disk with empty filesystem
+    logger.info("Creating an empty disk image")
+    with temporary_directory() as empty_dir:
+        virt_make_fs = which("virt-make-fs")
+        cmd = [virt_make_fs, "--partition", "--size", size, "--type",
+               "%s" % filesystem, "--format", "qcow2", "--",
+               empty_dir, output_filename]
+        if verbose:
+            cmd.insert(1, "--verbose")
+
+        proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=False)
+        proc.communicate()
+        if proc.returncode:
+            raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
+    # Fill disk with our data
+    logger.info("Copying the data into the disk image")
+    if uncompress_binary:
+        cmd = "%s %s | %s -a %s -m /dev/sda1:/ tar-in - /" % \
+            (uncompress_binary, input_, which("guestfish"), output_filename)
+    else:
+        cmd = "%s -a %s -m /dev/sda1:/ tar-in %s /" % \
+            (which("guestfish"), input_, output_filename)
+    proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=True)
     proc.communicate()
     if proc.returncode:
-        raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
 
 
 def create_appliance(args):
     """Convert disk to another format."""
-    input_ = op.abspath(args.input)
-    output = op.abspath(args.output)
-    temp_file = op.abspath(".%s" % next(tempfile._get_candidate_names()))
+    input_ = op.abspath(to_unicode(args.input))
+    output = op.abspath(to_unicode(args.output))
+    temp_filename = to_unicode(next(tempfile._get_candidate_names()))
+    temp_file = op.abspath(to_unicode(".%s" % temp_filename))
     output_fmt = args.format.lower()
     output_filename = "%s.%s" % (output, output_fmt)
 
@@ -193,7 +294,6 @@ def create_appliance(args):
     if args.verbose:
         os.environ['LIBGUESTFS_DEBUG'] = '1'
 
-    logger.info("Creating a new disk image")
     create_disk(input_,
                 temp_file,
                 args.format,
@@ -214,7 +314,7 @@ def create_appliance(args):
         os.remove(temp_file) if os.path.exists(temp_file) else None
 
 if __name__ == '__main__':
-    allowed_formats = disk_formats
+    allowed_formats = ('qcow', 'qcow2', 'qed', 'vdi', 'raw', 'vmdk')
     allowed_formats_help = 'Allowed values are ' + ', '.join(allowed_formats)
 
     allowed_levels = ["%d" % i for i in range(1, 10)] + ["best", "fast"]
