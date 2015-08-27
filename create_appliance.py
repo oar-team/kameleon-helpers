@@ -244,14 +244,13 @@ def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
     """Make a disk image from a tar archive or files."""
     input_type = file_type(input_).lower()
 
+    make_tar_cmd = ""
     if "xz compressed data" in input_type:
-        uncompress_binary = which("xzcat")
+        make_tar_cmd = "%s %s" % (which("xzcat"), input_)
     elif "bzip2 compressed data" in input_type:
-        uncompress_binary = which("bzcat")
+        make_tar_cmd = "%s %s" % (which("bzcat"), input_)
     elif "gzip compressed data" in input_type:
-        uncompress_binary = which("zcat")
-    else:
-        uncompress_binary = ""
+        make_tar_cmd = "%s %s" % (which("zcat"), input_)
 
     # create a disk with empty filesystem
     logger.info("Creating an empty disk image")
@@ -269,9 +268,18 @@ def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
             raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
     # Fill disk with our data
     logger.info("Copying the data into the disk image")
-    if uncompress_binary:
-        cmd = "%s %s | %s -a %s -m /dev/sda1:/ tar-in - /" % \
-            (uncompress_binary, input_, which("guestfish"), output_filename)
+    if "directory" in input_type:
+        excludes = ['/dev/*', '/proc/*', '/sys/*', '/tmp/*', '/run/*',
+                    '/mnt/*']
+        tar_options_list = ['--numeric-owner', '--one-file-system'
+                            ' '.join(('--exclude="%s"' % s for s in excludes))]
+        tar_options = ' '.join(tar_options_list)
+        make_tar_cmd = '%s -cf - %s -C %s $(cd %s; ls -A) %s' % \
+            (which("tar"), tar_options, input_, input_)
+
+    if make_tar_cmd:
+        cmd = "%s | %s -a %s -m /dev/sda1:/ tar-in - /" % \
+            (make_tar_cmd, which("guestfish"), output_filename)
     else:
         cmd = "%s -a %s -m /dev/sda1:/ tar-in %s /" % \
             (which("guestfish"), input_, output_filename)
