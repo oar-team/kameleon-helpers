@@ -257,8 +257,8 @@ def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
     with temporary_directory() as empty_dir:
         virt_make_fs = which("virt-make-fs")
         cmd = [virt_make_fs, "--partition", "--size", size, "--type",
-               "%s" % filesystem, "--format", "qcow2", "--",
-               empty_dir, output_filename]
+               "%s" % filesystem, "--format", "qcow2", "--label", "rootfs",
+               "--", empty_dir, output_filename]
         if verbose:
             cmd.insert(1, "--verbose")
 
@@ -269,12 +269,12 @@ def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
     # Fill disk with our data
     logger.info("Copying the data into the disk image")
     if "directory" in input_type:
-        excludes = ['/dev/*', '/proc/*', '/sys/*', '/tmp/*', '/run/*',
+        excludes = ['dev/*', 'proc/*', 'sys/*', 'tmp/*', 'run/*',
                     '/mnt/*']
-        tar_options_list = ['--numeric-owner', '--one-file-system'
+        tar_options_list = ['--numeric-owner', '--one-file-system',
                             ' '.join(('--exclude="%s"' % s for s in excludes))]
         tar_options = ' '.join(tar_options_list)
-        make_tar_cmd = '%s -cf - %s -C %s $(cd %s; ls -A) %s' % \
+        make_tar_cmd = '%s -cf - %s -C %s $(cd %s; ls -A)' % \
             (which("tar"), tar_options, input_, input_)
 
     if make_tar_cmd:
@@ -348,7 +348,8 @@ if __name__ == '__main__':
                         required=True, metavar='filename')
     parser.add_argument('--extlinux-mbr', action="store", type=str,
                         help='Extlinux MBR', metavar='')
-    parser.add_argument('--append', action="store", type=str, default="",
+    parser.add_argument('--append', action="store", type=str,
+                        default="rw quiet",
                         help='Additional kernel args', metavar='')
     parser.add_argument('--verbose', action="store_true", default=False,
                         help='Enable very verbose messages')
