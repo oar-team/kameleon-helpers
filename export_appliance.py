@@ -85,7 +85,7 @@ def run_guestfish_script(disk, script, mount=False):
     """Run guestfish script."""
     args = [which("guestfish"), '-a', disk]
     if mount:
-        script = "run\nmount /dev/sda1 /\n%s" % script
+        args.append('-i')
     else:
         script = "run\n%s" % script
     proc = subprocess.Popen(args,
