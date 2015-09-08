@@ -275,7 +275,7 @@ def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
             (make_tar_cmd, which("guestfish"), output_filename)
     else:
         cmd = "%s -a %s -m /dev/sda1:/ tar-in %s /" % \
-            (which("guestfish"), input_, output_filename)
+            (which("guestfish"), output_filename, input_)
     proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=True)
     proc.communicate()
     if proc.returncode:
