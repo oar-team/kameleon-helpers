@@ -341,7 +341,7 @@ if __name__ == '__main__':
     parser.add_argument('--extlinux-mbr', action="store", type=str,
                         help='Extlinux MBR', metavar='')
     parser.add_argument('--append', action="store", type=str,
-                        default="quiet",
+                        default="",
                         help='Additional kernel args', metavar='')
     parser.add_argument('--verbose', action="store_true", default=False,
                         help='Enable very verbose messages')
