@@ -238,10 +238,6 @@ part-set-bootable /dev/sda 1 true
 
 echo "[guestfish] Generate empty fstab"
 write /etc/fstab "# UNCONFIGURED FSTAB FOR BASE SYSTEM\\n"
-
-echo "[guestfish] Update SELinux information"
-write /.autorelabel "\\n"
-
 """ % (mbr_path, vmlinuz, initrd, uuid, append)
     run_guestfish_script(disk, script)
     return uuid, vmlinuz, initrd
