@@ -260,7 +260,7 @@ def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
     with temporary_directory() as empty_dir:
         virt_make_fs = which("virt-make-fs")
         cmd = [virt_make_fs, "--partition", "--size", size, "--type",
-               "%s" % filesystem, "--format", "qcow2", "--label", "ROOTFS",
+               "%s" % filesystem, "--format", "qcow2",
                "--", empty_dir, output_filename]
         if verbose:
             cmd.insert(1, "--verbose")
