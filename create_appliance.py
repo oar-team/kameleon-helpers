@@ -238,6 +238,9 @@ part-set-bootable /dev/sda 1 true
 
 echo "[guestfish] Generate empty fstab"
 write /etc/fstab "# UNCONFIGURED FSTAB FOR BASE SYSTEM\\n"
+
+echo "[guestfish] Set / permissions to '0755'"
+chmod 0755 /
 """ % (mbr_path, vmlinuz, initrd, uuid, append)
     run_guestfish_script(disk, script)
     return uuid, vmlinuz, initrd
