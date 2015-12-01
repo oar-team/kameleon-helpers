@@ -307,18 +307,18 @@ if __name__ == '__main__':
                         help='Enable very verbose messages')
     log_format = '%(levelname)s: %(message)s'
     level = logging.INFO
-    # try:
-    args = parser.parse_args()
-    if args.verbose:
-        level = logging.DEBUG
+    try:
+        args = parser.parse_args()
+        if args.verbose:
+            level = logging.DEBUG
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(level)
-    handler.setFormatter(logging.Formatter(log_format))
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(level)
+        handler.setFormatter(logging.Formatter(log_format))
 
-    logger.setLevel(level)
-    logger.addHandler(handler)
-    create_appliance(args)
-    # except Exception as exc:
-    #     sys.stderr.write(u"\nError: %s\n" % exc)
-    #     sys.exit(1)
+        logger.setLevel(level)
+        logger.addHandler(handler)
+        create_appliance(args)
+    except Exception as exc:
+        sys.stderr.write(u"\nError: %s\n" % exc)
+        sys.exit(1)
