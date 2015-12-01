@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """Convert an rootfs archive to a bootable disk image with guestfish."""
-from __future__ import division, unicode_literals
 
 import os
 import os.path as op
@@ -15,59 +14,6 @@ import contextlib
 
 
 logger = logging.getLogger(__name__)
-
-
-# Syntax sugar.
-_ver = sys.version_info
-
-#: Python 2.x?
-is_py2 = (_ver[0] == 2)
-
-#: Python 3.x?
-is_py3 = (_ver[0] == 3)
-
-
-# Python 2/3 compat
-if is_py3:
-    builtin_str = str
-    str = str
-    bytes = bytes
-    basestring = (str, bytes)
-
-    def is_bytes(x):
-        """ Return True if `x` is bytes."""
-        return isinstance(x, (bytes, memoryview, bytearray))
-
-else:
-    builtin_str = str
-    bytes = str
-    str = unicode
-
-    def is_bytes(x):
-        """ Return True if `x` is bytes."""
-        return isinstance(x, (buffer, bytearray))
-
-
-def to_unicode(obj, encoding='utf-8'):
-    """Convert ``obj`` to unicode"""
-    # unicode support
-    if isinstance(obj, str):
-        return obj
-
-    # bytes support
-    if is_bytes(obj):
-        if hasattr(obj, 'tobytes'):
-            return str(obj.tobytes(), encoding)
-        return str(obj, encoding)
-
-    # string support
-    if isinstance(obj, basestring):
-        if hasattr(obj, 'decode'):
-            return obj.decode(encoding)
-        else:
-            return str(obj, encoding)
-
-    return str(obj)
 
 
 @contextlib.contextmanager
@@ -114,7 +60,7 @@ def file_type(path):
     output, _ = proc.communicate()
     if proc.returncode:
         raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
-    return output.split(':')[1].strip()
+    return output.decode('utf-8').split(':')[1].strip()
 
 
 def qemu_convert(disk, output_fmt, output_filename):
@@ -142,17 +88,17 @@ def run_guestfish_script(disk, script, mount=True, piped_output=False):
                                 stdout=subprocess.PIPE,
                                 env=os.environ.copy())
 
-        stdout, _ = proc.communicate(input=script)
+        stdout, _ = proc.communicate(input=script.encode('utf-8'))
     else:
         proc = subprocess.Popen(args,
                                 stdin=subprocess.PIPE,
                                 env=os.environ.copy())
-        proc.communicate(input=script)
+        proc.communicate(input=script.encode('utf-8'))
     if proc.returncode:
         raise subprocess.CalledProcessError(proc.returncode, ' '.join(args))
 
     if piped_output:
-        return stdout
+        return stdout.decode('utf-8')
 
 
 def find_mbr():
@@ -210,7 +156,7 @@ write-append /etc/fstab "UUID=%s\\t/\\t%s\\tdefaults\\t0\\t1\\n"
 def install_bootloader(disk, mbr, append):
     """Install a bootloader"""
     mbr_path = mbr or find_mbr()
-    mbr_path = op.abspath(to_unicode(mbr_path))
+    mbr_path = op.abspath(mbr_path)
     uuid, vmlinuz, initrd = get_boot_information(disk)
     logger.info("Root partition UUID: %s" % uuid)
     logger.info("Kernel image: /boot/%s" % vmlinuz)
@@ -297,10 +243,10 @@ def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
 
 def create_appliance(args):
     """Convert disk to another format."""
-    input_ = op.abspath(to_unicode(args.input))
-    output = op.abspath(to_unicode(args.output))
-    temp_filename = to_unicode(next(tempfile._get_candidate_names()))
-    temp_file = op.abspath(to_unicode(".%s" % temp_filename))
+    input_ = op.abspath(args.input)
+    output = op.abspath(args.output)
+    temp_filename = next(tempfile._get_candidate_names())
+    temp_file = op.abspath(".%s" % temp_filename)
     output_fmt = args.format.lower()
     output_filename = "%s.%s" % (output, output_fmt)
 
@@ -361,18 +307,18 @@ if __name__ == '__main__':
                         help='Enable very verbose messages')
     log_format = '%(levelname)s: %(message)s'
     level = logging.INFO
-    try:
-        args = parser.parse_args()
-        if args.verbose:
-            level = logging.DEBUG
+    # try:
+    args = parser.parse_args()
+    if args.verbose:
+        level = logging.DEBUG
 
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(level)
-        handler.setFormatter(logging.Formatter(log_format))
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(log_format))
 
-        logger.setLevel(level)
-        logger.addHandler(handler)
-        create_appliance(args)
-    except Exception as exc:
-        sys.stderr.write(u"\nError: %s\n" % exc)
-        sys.exit(1)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+    create_appliance(args)
+    # except Exception as exc:
+    #     sys.stderr.write(u"\nError: %s\n" % exc)
+    #     sys.exit(1)
