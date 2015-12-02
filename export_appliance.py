@@ -148,7 +148,7 @@ if __name__ == '__main__':
         description=sys.modules[__name__].__doc__,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('file', action="store", type=file,
+    parser.add_argument('file', action="store", type=argparse.FileType('r'),
                         help='Disk image filename')
     parser.add_argument('-F', '--formats', action="store", type=str, nargs='+',
                         help='Output format. ' + allowed_formats_help,
