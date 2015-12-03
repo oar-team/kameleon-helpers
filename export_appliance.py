@@ -95,7 +95,7 @@ def run_guestfish_script(disk, script, mount=False):
     proc = subprocess.Popen(args,
                             stdin=subprocess.PIPE,
                             env=os.environ.copy())
-    proc.communicate(input=script)
+    proc.communicate(input=script.encode('utf-8'))
     if proc.returncode:
         raise subprocess.CalledProcessError(proc.returncode, ' '.join(args))
 
@@ -103,12 +103,14 @@ def run_guestfish_script(disk, script, mount=False):
 def guestfish_zerofree(filename):
     """Fill free space with zero"""
     logger.info(guestfish_zerofree.__doc__)
-    fs = subprocess.check_output("virt-list-filesystems %s" % filename,
+    cmd = "virt-list-filesystems %s" % filename
+    fs = subprocess.check_output(cmd.encode('utf-8'),
                                  stderr=subprocess.STDOUT,
                                  shell=True,
                                  env=os.environ.copy())
-    logger.info('\n'.join(('  `--> %s' % i for i in fs.split())))
-    script = '\n'.join(('zerofree %s' % i for i in fs.split()))
+    list_fs = fs.decode('utf-8').split()
+    logger.info('\n'.join(('  `--> %s' % i for i in list_fs)))
+    script = '\n'.join(('zerofree %s' % i for i in list_fs))
     run_guestfish_script(filename, script, mount="read_only")
 
 
