@@ -204,20 +204,24 @@ def create_disk(input_, output_filename, fmt, size, filesystem, verbose):
     elif "gzip compressed data" in input_type:
         make_tar_cmd = "%s %s" % (which("zcat"), input_)
 
-    # create a disk with empty filesystem
+    # create empty disk
     logger.info("Creating an empty disk image")
-    with temporary_directory() as empty_dir:
-        virt_make_fs = which("virt-make-fs")
-        cmd = [virt_make_fs, "--partition", "--size", size, "--type",
-               "%s" % filesystem, "--format", "qcow2",
-               "--", empty_dir, output_filename]
-        if verbose:
-            cmd.insert(1, "--verbose")
+    qemu_img = which("qemu-img")
+    cmd = [qemu_img, "create", "-f", fmt, output_filename, size, "-q"]
+    proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=False)
+    proc.communicate()
+    if proc.returncode:
+        raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
 
-        proc = subprocess.Popen(cmd, env=os.environ.copy(), shell=False)
-        proc.communicate()
-        if proc.returncode:
-            raise subprocess.CalledProcessError(proc.returncode, ' '.join(cmd))
+    # parition disk and create the filesystem
+    script = """
+echo "[guestfish] Create new MBR partition table on /dev/sda"
+part-disk /dev/sda mbr
+echo "[guestfish] Create %s filesystem on /dev/sda1"
+mkfs %s /dev/sda1
+""" % (filesystem, filesystem)
+    run_guestfish_script(output_filename, script, mount=False)
+
     # Fill disk with our data
     logger.info("Copying the data into the disk image")
     if "directory" in input_type:
