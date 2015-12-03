@@ -271,11 +271,11 @@ def create_appliance(args):
     generate_fstab(temp_file, uuid, args.filesystem)
 
     logger.info("Exporting appliance to %s" % output_filename)
-    if output_fmt == "qcow2":
-        shutil.move(temp_file, output_filename)
-    else:
+    if output_fmt == "qcow2" and args.compress:
         qemu_convert(temp_file, output_fmt, output_filename)
         os.remove(temp_file) if os.path.exists(temp_file) else None
+    else:
+        shutil.move(temp_file, output_filename)
 
 if __name__ == '__main__':
     allowed_formats = ('qcow', 'qcow2', 'qed', 'vdi', 'raw', 'vmdk')
@@ -309,6 +309,8 @@ if __name__ == '__main__':
                         help='Additional kernel args', metavar='')
     parser.add_argument('--verbose', action="store_true", default=False,
                         help='Enable very verbose messages')
+    parser.add_argument('--compress', action="store_true", default=False,
+                        help='compress the output file (Only qcow2).')
     log_format = '%(levelname)s: %(message)s'
     level = logging.INFO
     try:
