@@ -84,8 +84,12 @@ def qemu_convert(disk, output_fmt, output_filename):
 def run_guestfish_script(disk, script, mount=False):
     """Run guestfish script."""
     args = [which("guestfish"), '-a', disk]
-    if mount:
+    if mount in ("read_only", "read_write", "ro", "rw"):
         args.append('-i')
+        if mount in mount in ("read_only", "ro"):
+            args.append('--ro')
+        else:
+            args.append('--rw')
     else:
         script = "run\n%s" % script
     proc = subprocess.Popen(args,
@@ -105,7 +109,7 @@ def guestfish_zerofree(filename):
                                  env=os.environ.copy())
     logger.info('\n'.join(('  `--> %s' % i for i in fs.split())))
     script = '\n'.join(('zerofree %s' % i for i in fs.split()))
-    run_guestfish_script(filename, script, mount=False)
+    run_guestfish_script(filename, script, mount="read_only")
 
 
 def convert_disk_image(args):
